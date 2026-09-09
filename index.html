@@ -20,6 +20,13 @@
     .btn-purple { background-color: #8e24aa; }
     .btn-upload { background-color: #00897b; }
     .btn-report { background-color: #5e35b1; }
+
+    /* 📊 Daily Receive Report */
+    .report-title { text-align: center; font-size: 1.3rem; font-weight: bold; margin: 15px 0 8px; }
+    .report-summary, .report-detail { width: 100%; border-collapse: collapse; margin-bottom: 6px; font-size: 0.85rem; }
+    .report-summary td, .report-detail th, .report-detail td { border: 1px solid #37474f; padding: 6px 8px; text-align: center; }
+    .report-summary td { font-weight: bold; }
+    .report-detail th { background-color: #37474f; color: white; }
     .page { display: none; padding: 15px; }
     #menu-page { display: flex; }
     .header-bar { display: flex; align-items: center; margin-bottom: 15px; }
@@ -113,19 +120,17 @@
   <div id="report-page" class="page">
     <div class="header-bar">
       <button class="btn-back" onclick="switchPage('menu-page')">⬅ กลับ</button>
-      <h2>Report — Batch ที่ยังไม่มี Sloc</h2>
+      <h2>Daily Receive Report</h2>
+    </div>
+    <div class="form-group">
+      <label>เลือกวันที่:</label>
+      <input type="date" id="report-date" class="form-control" onchange="loadDailyReport()">
     </div>
     <div id="report-loading" class="loading">⏳ กำลังโหลดรายงาน...</div>
     <div class="btn-group">
-      <button class="btn-action btn-scan" onclick="loadReport()">🔄 โหลดรายงาน</button>
       <button class="btn-action btn-add" onclick="savePDF()">💾 SavePDF</button>
     </div>
-    <div id="report-print-area" class="table-container">
-      <table id="report-table">
-        <thead><tr><th>Batch No (ยังไม่มี Sloc)</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
+    <div id="report-print-area"></div>
   </div>
 
   <!-- หน้าดูแถว -->
@@ -559,40 +564,64 @@
       .catch(e => { ld.style.display = 'none'; alert('เชื่อมต่อผิดพลาด: ' + e); });
     }
 
-    // หน้า Report: โหลดรายการ Batch No ที่ยังไม่มี Sloc มาแสดงเป็นตาราง
-    function loadReport() {
+    // หน้า Report: โหลด Daily Receive Report ตามวันที่ที่เลือก แยกเป็น Coil / Sheet
+    let lastReportResult = null;
+
+    function loadDailyReport() {
+      const dateVal = document.getElementById('report-date').value; // yyyy-MM-dd
+      if (!dateVal) return;
+
       const ld = document.getElementById('report-loading');
       ld.innerText = "⏳ กำลังโหลดรายงาน...";
       ld.style.display = 'block';
 
       fetch(BACKEND_URL, {
         method: "POST",
-        body: JSON.stringify({ action: "getEmptySlocReport" })
+        body: JSON.stringify({ action: "getDailyReceiveReport", date: dateVal })
       })
       .then(res => res.json())
       .then(res => {
         ld.style.display = 'none';
         if (!res.success) { alert(res.msg); return; }
-
-        const tb = document.querySelector('#report-table tbody');
-        tb.innerHTML = '';
-        if (res.items.length === 0) {
-          tb.innerHTML = '<tr><td>— ไม่มีรายการค้างอยู่ —</td></tr>';
-          return;
-        }
-        res.items.forEach(batchNo => {
-          const r = document.createElement('tr');
-          r.innerHTML = `<td>${batchNo}</td>`;
-          tb.appendChild(r);
-        });
+        lastReportResult = res;
+        renderDailyReport(res);
       })
       .catch(e => { ld.style.display = 'none'; alert('เชื่อมต่อผิดพลาด: ' + e); });
     }
 
+    function buildReportSection(title, section, unitLabel) {
+      if (!section || section.rows.length === 0) return '';
+      let html = `<div class="report-title">${title}</div>`;
+      html += `<table class="report-summary"><tr>
+        <td>Date</td><td>${lastReportResult.date}</td>
+        <td>Total ${unitLabel}</td><td>${section.totalQty} ${unitLabel}</td>
+        <td>Total Weight</td><td>${section.totalWgt} Kgs</td>
+        <td>Total Truck</td><td>${section.totalTruck} Truck</td>
+      </tr></table>`;
+      html += `<table class="report-detail"><thead><tr>
+        <th>No</th><th>Batch No</th><th>Size</th><th>Spec</th><th>Weight</th><th>Quantity</th><th>Inspection</th><th>Maker</th><th>Truck No</th>
+      </tr></thead><tbody>`;
+      section.rows.forEach(r => {
+        html += `<tr><td>${r.no}</td><td>${r.batchNo}</td><td>${r.size}</td><td>${r.spec}</td><td>${r.weight}</td><td>${r.quantity}</td><td>${r.inspection}</td><td>${r.maker}</td><td>${r.truckNo}</td></tr>`;
+      });
+      html += `</tbody></table>`;
+      return html;
+    }
+
+    function renderDailyReport(res) {
+      const container = document.getElementById('report-print-area');
+      let html = '';
+      html += buildReportSection('Daily Receive Report (Coil)', res.coil, 'Coil');
+      html += buildReportSection('Daily Receive Report (Sheet)', res.sheet, 'Pack');
+      container.innerHTML = html || '<p style="text-align:center;color:#78909c;">ไม่พบข้อมูลรับเข้าในวันที่นี้</p>';
+    }
+
     // ปุ่ม SavePDF: ใช้กลไก print เดียวกัน — เบราว์เซอร์มีตัวเลือก "Save as PDF" ในหน้าต่างพิมพ์อยู่แล้ว
     function savePDF() {
-      const rows = document.querySelectorAll('#report-table tbody tr');
-      if (rows.length === 0) { alert('กรุณาโหลดรายงานก่อน'); return; }
+      if (!lastReportResult || (!lastReportResult.coil && !lastReportResult.sheet)) {
+        alert('กรุณาเลือกวันที่ที่มีข้อมูลก่อน');
+        return;
+      }
       preparePrint('report-print-area');
       window.print();
     }
