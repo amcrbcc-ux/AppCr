@@ -6,6 +6,9 @@
   <title>ระบบคอยล์</title>
   <!-- นำเข้าคลังรหัสสแกนบาร์โค้ดเวอร์ชันเสถียรดึงข้อมูลไว -->
   <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- ใช้สร้างไฟล์ PDF ดาวน์โหลดตรงๆ (ปุ่ม SavePDF ในหน้า Report) โดยไม่ต้องผ่านหน้าต่างพิมพ์ของเบราว์เซอร์ -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     body { font-family: -apple-system, sans-serif; margin: 0; padding: 0; background-color: #f5f7fb; color: #333; }
@@ -270,7 +273,7 @@
 
   <script>
     // 🔴 วาง URL เว็บแอปจาก Google Apps Script (ลงท้ายด้วย /exec) ตรงช่องนี้
-    const BACKEND_URL = "https://script.google.com/macros/s/AKfycbyIj3sIBqRwM2eU_M4Pl4iiFBOwNiqKEPXVtsVk3FDuik6Hn8Kaoql6dpj5Ggti1yCYzQ/exec";
+    const BACKEND_URL = "วาง_URL_เว็บแอป_APPS_SCRIPT_ที่ลงท้ายด้วย_EXEC_ตรงนี้";
 
     let html5QrCode = null;
     let activeInputId = '';
@@ -616,14 +619,45 @@
       container.innerHTML = html || '<p style="text-align:center;color:#78909c;">ไม่พบข้อมูลรับเข้าในวันที่นี้</p>';
     }
 
-    // ปุ่ม SavePDF: ใช้กลไก print เดียวกัน — เบราว์เซอร์มีตัวเลือก "Save as PDF" ในหน้าต่างพิมพ์อยู่แล้ว
+    // ปุ่ม SavePDF: สร้างไฟล์ PDF จริงแล้วดาวน์โหลดลงเครื่องทันที (ไม่ผ่านหน้าต่างพิมพ์ของเบราว์เซอร์)
     function savePDF() {
       if (!lastReportResult || (!lastReportResult.coil && !lastReportResult.sheet)) {
         alert('กรุณาเลือกวันที่ที่มีข้อมูลก่อน');
         return;
       }
-      preparePrint('report-print-area');
-      window.print();
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      let y = 15;
+
+      function addSection(title, section, unitLabel) {
+        if (!section || section.rows.length === 0) return;
+
+        doc.setFontSize(14);
+        doc.text(title, 105, y, { align: 'center' });
+        y += 7;
+
+        doc.setFontSize(9);
+        const summaryLine = `Date: ${lastReportResult.date}   Total ${unitLabel}: ${section.totalQty} ${unitLabel}   Total Weight: ${section.totalWgt} Kgs   Total Truck: ${section.totalTruck} Truck`;
+        doc.text(summaryLine, 105, y, { align: 'center' });
+        y += 6;
+
+        doc.autoTable({
+          startY: y,
+          head: [['No', 'Batch No', 'Size', 'Spec', 'Weight', 'Quantity', 'Inspection', 'Maker', 'Truck No']],
+          body: section.rows.map(r => [r.no, r.batchNo, r.size, r.spec, r.weight, r.quantity, r.inspection, r.maker, r.truckNo]),
+          styles: { fontSize: 7, cellPadding: 2 },
+          headStyles: { fillColor: [55, 71, 79] },
+          margin: { left: 10, right: 10 }
+        });
+
+        y = doc.lastAutoTable.finalY + 12;
+      }
+
+      addSection('Daily Receive Report (Coil)', lastReportResult.coil, 'Coil');
+      addSection('Daily Receive Report (Sheet)', lastReportResult.sheet, 'Pack');
+
+      doc.save(`DailyReceiveReport_${lastReportResult.date}.pdf`);
     }
 
     function clearReceivePage() {
