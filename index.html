@@ -73,11 +73,16 @@
     .btn-close-scan { margin-top: 15px; padding: 12px 25px; background: #e53935; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
     .loading { color: #1e88e5; font-weight: bold; text-align: center; margin: 12px 0; display: none; }
 
-    /* 🖨️ ป้ายที่จะพิมพ์ (หน้ารับเข้า) — 1 แถวต่อ 1 รายการ, 6 ช่องเรียงแนวนอนในแถวเดียวกัน */
+    /* 🖨️ ป้ายที่จะพิมพ์ (หน้ารับเข้า) — แต่ละรายการแยกเป็น 3 หน้ากระดาษต่อกัน:
+       หน้า 1-2: ป้าย Batch No (เลข 8 ตัวหน้า/6 ตัวหลัง เรียงบน-ล่าง) x2 ชุด (ก็อปปี้ 2 ใบ)
+       หน้า 3: ป้าย Size/Weight (เรียงบน-ล่าง) */
     #print-label-container { display: none; }
-    .print-label-row { display: flex; flex-direction: row; align-items: baseline; gap: 4px; }
-    .print-label-row input {
-      margin: 0; padding: 0; border: none; background: transparent;
+    .print-page {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      width: 100%; page-break-after: always;
+    }
+    .print-page input {
+      margin: 0; padding: 0; border: none; background: transparent; width: 100%;
       font-family: 'Bernard MT Condensed', sans-serif; text-align: center;
     }
     .lbl-225 { font-size: 225px; }
@@ -85,6 +90,7 @@
 
     /* ตอนสั่งพิมพ์จริง (ทั้งหน้ารับเข้าและหน้า Report) ให้โชว์แค่ .print-target ที่กำหนดไว้ตอนนั้นเท่านั้น */
     @media print {
+      @page { size: landscape; margin: 0; }
       body * { visibility: hidden; }
       .print-target, .print-target * { visibility: visible; }
       .print-target { display: block !important; position: absolute; top: 0; left: 0; width: 100%; }
@@ -273,7 +279,7 @@
 
   <script>
     // 🔴 วาง URL เว็บแอปจาก Google Apps Script (ลงท้ายด้วย /exec) ตรงช่องนี้
-    const BACKEND_URL = "https://script.google.com/macros/s/AKfycbyIj3sIBqRwM2eU_M4Pl4iiFBOwNiqKEPXVtsVk3FDuik6Hn8Kaoql6dpj5Ggti1yCYzQ/exec";
+    const BACKEND_URL = "วาง_URL_เว็บแอป_APPS_SCRIPT_ที่ลงท้ายด้วย_EXEC_ตรงนี้";
 
     let html5QrCode = null;
     let activeInputId = '';
@@ -523,18 +529,21 @@
       const first8 = batchVal.substring(0, 8);
       const last6 = batchVal.length >= 6 ? batchVal.substring(batchVal.length - 6) : batchVal;
       const weightFormatted = formatWeightComma(item.weight);
+      const container = document.getElementById('print-label-container');
 
-      const row = document.createElement('div');
-      row.className = 'print-label-row';
-      row.innerHTML = `
-        <input type="text" class="lbl-225" readonly value="${first8}">
-        <input type="text" class="lbl-290" readonly value="${last6}">
-        <input type="text" class="lbl-225" readonly value="${first8}">
-        <input type="text" class="lbl-290" readonly value="${last6}">
-        <input type="text" class="lbl-225" readonly value="${item.size}">
-        <input type="text" class="lbl-290" readonly value="${weightFormatted}">
-      `;
-      document.getElementById('print-label-container').appendChild(row);
+      function makePage(topVal, bottomVal) {
+        const page = document.createElement('div');
+        page.className = 'print-page';
+        page.innerHTML = `
+          <input type="text" class="lbl-225" readonly value="${topVal}">
+          <input type="text" class="lbl-290" readonly value="${bottomVal}">
+        `;
+        container.appendChild(page);
+      }
+
+      makePage(first8, last6);              // หน้า 1: ป้าย Batch No ชุดที่ 1
+      makePage(first8, last6);              // หน้า 2: ป้าย Batch No ชุดที่ 2 (สำรอง/ก็อปปี้)
+      makePage(item.size, weightFormatted); // หน้า 3: ป้าย Size / Weight
     }
 
     // เลือกว่า container ไหนจะถูกพิมพ์ตอนนี้ (ล้าง .print-target ตัวอื่นออกก่อนเสมอ กันโชว์ผิดพื้นที่)
