@@ -654,8 +654,9 @@
           startY: y,
           head: [['No', 'Batch No', 'Size', 'Spec', 'Weight', 'Quantity', 'Inspection', 'Maker', 'Truck No']],
           body: section.rows.map(r => [r.no, r.batchNo, r.size, r.spec, r.weight, r.quantity, r.inspection, r.maker, r.truckNo]),
-          styles: { fontSize: 7, cellPadding: 2 },
-          headStyles: { fillColor: [55, 71, 79] },
+          theme: 'grid', // ทำให้มีเส้นขอบรอบทุกเซลล์ (ไม่ใช่แค่ theme 'striped'/'plain' ที่ไม่มีเส้น)
+          styles: { fontSize: 7, cellPadding: 2, lineColor: [55, 71, 79], lineWidth: 0.2 },
+          headStyles: { fillColor: [55, 71, 79], lineColor: [55, 71, 79], lineWidth: 0.2 },
           margin: { left: 10, right: 10 }
         });
 
