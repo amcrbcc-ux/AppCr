@@ -60,6 +60,8 @@
     .scanner-wrapper { width: 95%; max-width: 340px; position: relative; border: 3px solid #00bcbc; border-radius: 12px; overflow: hidden; box-shadow: 0 0 15px #00bcbc; }
     #reader { width: 100%; height: 100px; background: #000; } /* บังคับขนาดช่องส่องกล้องให้เตี้ยลงตามเงื่อนไข */
     #reader video { object-fit: cover !important; width: 100% !important; height: 100% !important; }
+
+    /* 📸 กล้องถ่ายภาพแบบกรอบแคบ (สำหรับถ่ายเฉพาะช่อง "Batch No." บนใบสั่งงาน) */
     
     /* 🟢 แอนิเมชันสร้างเส้นเลเซอร์สแกนอัตโนมัติวิ่งขึ้นลงในช่องกล้อง */
     .laser-line { position: absolute; top: 0; left: 0; width: 100%; height: 3px; background-color: #ff3d00; box-shadow: 0 0 8px #ff3d00; animation: laserMove 2s infinite ease-in-out; z-index: 10; pointer-events: none; }
@@ -83,10 +85,10 @@
     }
     .print-page input {
       margin: 0; padding: 0; border: none; background: transparent; width: 100%;
-      font-family: 'Times New Roman', sans-serif; text-align: center;
+      font-family: 'Bernard MT Condensed', sans-serif; text-align: center;
     }
-    .lbl-225 { font-size: 160px; font-weight: bold; }
-    .lbl-290 { font-size: 240px; font-weight: bold; }
+    .lbl-225 { font-size: 225px; }
+    .lbl-290 { font-size: 290px; }
 
     /* ตอนสั่งพิมพ์จริง (ทั้งหน้ารับเข้าและหน้า Report) ให้โชว์แค่ .print-target ที่กำหนดไว้ตอนนั้นเท่านั้น */
     @media print {
@@ -238,7 +240,7 @@
 
     <div class="form-group">
       <label>ถ่ายภาพช่อง "Batch No." บนใบสั่งงาน:</label>
-      <input type="file" id="record-photo" class="form-control" accept="image/*" capture="environment" onchange="extractBatchFromPhotoRecord(this)">
+      <button class="btn-action btn-scan" style="width:100%;" onclick="openPhotoCaptureModal('record-loading', function(batchNo){ document.getElementById('record-batchno').value = batchNo; searchAndAddRecordRow(false); })">📷 ถ่ายภาพ</button>
     </div>
 
     <div class="form-group">
@@ -292,7 +294,7 @@
 
     <div class="form-group">
       <label>ถ่ายภาพช่อง "Batch No." บนใบสั่งงาน:</label>
-      <input type="file" id="cut-photo" class="form-control" accept="image/*" capture="environment" onchange="extractBatchFromPhotoCut(this)">
+      <button class="btn-action btn-scan" style="width:100%;" onclick="openPhotoCaptureModal('cut-extract-loading', function(batchNo){ document.getElementById('cut-batchno').value = batchNo; })">📷 ถ่ายภาพ</button>
     </div>
     <div id="cut-extract-loading" class="loading">⏳ กำลังอ่านข้อมูลจากภาพ...</div>
 
@@ -366,6 +368,20 @@
     <div class="scanner-tip">💡 ทาบกรอบสี่เหลี่ยมแนวราบให้ขนานกับแถบบาร์โค้ด</div>
     <button class="btn-close-scan" onclick="closeScanner()">❌ ปิดหน้าต่างสแกน</button>
   </div>
+
+  <!-- หน้าต่างถ่ายภาพแบบมีกรอบไกด์แคบๆ สำหรับถ่ายเฉพาะช่อง Batch No. ไปอ่านด้วย Gemini -->
+  <div id="photo-capture-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:9999; flex-direction:column; justify-content:center; align-items:center; padding:20px;">
+    <div style="position:relative; width:95%; max-width:360px;">
+      <video id="photo-capture-video" autoplay playsinline style="width:100%; display:block; border-radius:8px; background:#000;"></video>
+      <div style="position:absolute; top:41%; left:34%; width:32%; height:9%; border:3px solid #00bcbc; border-radius:8px; box-shadow:0 0 15px #00bcbc; pointer-events:none;"></div>
+    </div>
+    <div style="color:white; margin-top:15px; font-weight:bold; text-align:center; font-size:0.95rem;">📐 จัดกรอบสีฟ้าให้ครอบคลุมเฉพาะช่อง "Batch No." เท่านั้น</div>
+    <div style="margin-top:15px; display:flex; gap:10px;">
+      <button onclick="capturePhoto()" style="padding:14px 28px; background:#4caf50; color:white; border:none; border-radius:8px; font-weight:bold;">📸 ถ่าย</button>
+      <button onclick="closePhotoCaptureModal()" style="padding:14px 28px; background:#e53935; color:white; border:none; border-radius:8px; font-weight:bold;">❌ ปิด</button>
+    </div>
+  </div>
+  <canvas id="photo-capture-canvas" style="display:none;"></canvas>
 
   <script>
     // 🔴 วาง URL เว็บแอปจาก Google Apps Script (ลงท้ายด้วย /exec) ตรงช่องนี้
@@ -574,33 +590,68 @@
     // เก็บรายการที่ค้นเจอไว้ในตัวแปรนี้ ระหว่างรอกดปุ่ม "พิมพ์" ถึงจะค่อยย้ายข้อมูลจริง
     let receiveItems = [];
 
-    // ถ่ายภาพแล้วส่งให้ Gemini อ่าน Batch No. ให้อัตโนมัติ — ใช้ร่วมกันทั้งหน้า "จด Job" และ "ตัด Coil"
-    function doExtractBatchFromFile(file, loadingEl, onSuccess) {
-      if (!file) return;
+    // ===== กล้องถ่ายภาพแบบมีกรอบไกด์แคบๆ (ใช้ร่วมกันทั้งหน้า "จด Job" และ "ตัด Coil") =====
+    // แทนที่การถ่ายภาพแบบเต็มเฟรมของกล้องมือถือ ด้วยกรอบไกด์แคบๆ ที่ตัดภาพเฉพาะส่วนในกรอบ
+    // ก่อนส่งให้ Gemini อ่านค่า — แม่นยำกว่าเพราะไม่มีข้อมูลอื่นบนใบสั่งงานปนเข้ามารบกวน
+    let photoCaptureStream = null;
+    let photoCaptureLoadingId = '';
+    let photoCaptureOnSuccess = null;
+
+    function openPhotoCaptureModal(loadingElId, onSuccessCallback) {
+      photoCaptureLoadingId = loadingElId;
+      photoCaptureOnSuccess = onSuccessCallback;
+      document.getElementById('photo-capture-modal').style.display = 'flex';
+
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        .then(stream => {
+          photoCaptureStream = stream;
+          document.getElementById('photo-capture-video').srcObject = stream;
+        })
+        .catch(err => {
+          alert('ไม่สามารถเข้าถึงกล้องได้: ' + err);
+          closePhotoCaptureModal();
+        });
+    }
+
+    function closePhotoCaptureModal() {
+      if (photoCaptureStream) {
+        photoCaptureStream.getTracks().forEach(t => t.stop());
+        photoCaptureStream = null;
+      }
+      document.getElementById('photo-capture-modal').style.display = 'none';
+    }
+
+    // ตัดภาพเฉพาะส่วนในกรอบไกด์ (top:41% left:34% width:32% height:9% ของพื้นที่วิดีโอ) ก่อนส่งไปอ่านค่า
+    // แคบลงอีกรอบ (ค่าต้องตรงกับกรอบสีฟ้าที่เห็นในหน้าจอเป๊ะๆ) ให้ใกล้เคียงกรอบสีขาวจริงบนใบสั่งงาน
+    // ลดพื้นที่ปนจากคอลัมน์ข้างเคียงให้มากที่สุด — ถ้ากล้อง/ระยะถ่ายต่างกันมาก ผู้ใช้ขยับโทรศัพท์ให้
+    // ข้อความ Batch No. อยู่ในกรอบสีฟ้าที่เห็นบนจอได้เลย ไม่ต้องพึ่งการจัดวางที่ตายตัว
+    function capturePhoto() {
+      const video = document.getElementById('photo-capture-video');
+      const canvas = document.getElementById('photo-capture-canvas');
+
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const cropX = vw * 0.34, cropY = vh * 0.41, cropW = vw * 0.32, cropH = vh * 0.09;
+
+      canvas.width = cropW;
+      canvas.height = cropH;
+      canvas.getContext('2d').drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+      const base64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+      closePhotoCaptureModal();
+
+      const loadingEl = document.getElementById(photoCaptureLoadingId);
       loadingEl.innerText = "⏳ กำลังอ่านข้อมูลจากภาพ...";
       loadingEl.style.display = 'block';
 
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const base64 = e.target.result.split(',')[1]; // ตัด header "data:image/jpeg;base64," ออก
-
-        postJSON({ action: "extractBatchFromImage", imageBase64: base64 })
-        .then(res => {
-          loadingEl.style.display = 'none';
-          if (res.success) { onSuccess(res.batchNo); } else { alert(res.msg); }
-        })
-        .catch(err => { loadingEl.style.display = 'none'; alert(err.message || ('เชื่อมต่อผิดพลาด: ' + err)); });
-      };
-      reader.readAsDataURL(file);
+      postJSON({ action: "extractBatchFromImage", imageBase64: base64 })
+      .then(res => {
+        loadingEl.style.display = 'none';
+        if (res.success) { photoCaptureOnSuccess(res.batchNo); } else { alert(res.msg); }
+      })
+      .catch(err => { loadingEl.style.display = 'none'; alert(err.message || ('เชื่อมต่อผิดพลาด: ' + err)); });
     }
 
     // ===== หน้าตัด Coil =====
-    function extractBatchFromPhotoCut(inp) {
-      doExtractBatchFromFile(inp.files[0], document.getElementById('cut-extract-loading'), function(batchNo) {
-        document.getElementById('cut-batchno').value = batchNo;
-      });
-    }
-
     // ตัด Batch No. (ค่าเดิม ไม่เปลี่ยน) จาก McCoilAll ไปเก็บที่ McCoilCut (ตัดหมด) หรือ McStopCoil (ตัดไม่หมด)
     function moveToCut() {
       const batchNo = document.getElementById('cut-batchno').value.trim();
@@ -622,7 +673,6 @@
 
     function clearCutPage() {
       document.getElementById('cut-batchno').value = '';
-      document.getElementById('cut-photo').value = '';
       document.getElementById('cut-not-fully').checked = false;
     }
 
@@ -685,13 +735,6 @@
 
     // ===== หน้าจด Job =====
     let recordRows = []; // แต่ละแถว: {batchNo, sloc, size, weight, maker, notFullyCut}
-
-    function extractBatchFromPhotoRecord(inp) {
-      doExtractBatchFromFile(inp.files[0], document.getElementById('record-loading'), function(batchNo) {
-        document.getElementById('record-batchno').value = batchNo;
-        searchAndAddRecordRow(false);
-      });
-    }
 
     // โหลดรายชื่อชีตปลายทาง (S4, B1, ...) มาใส่ใน dropdown ที่ระบุ — ใช้ร่วมกันทั้งหน้าจด Job และหน้าตัด Coil
     function loadJobSheetsDropdown(selectId) {
@@ -764,11 +807,28 @@
       .catch(e => { ld.style.display = 'none'; alert(e.message || ('เชื่อมต่อผิดพลาด: ' + e)); });
     }
 
+    // ล้างทั้งบนหน้าเว็บ และล้างข้อมูลในชีตที่เลือกจริงๆ ด้วย (เขียนทับด้วยรายการว่าง ผ่าน saveJobSheet เดิม)
     function clearRecordPage() {
+      const sheetName = document.getElementById('record-sheet-select').value;
+
+      if (sheetName) {
+        if (!confirm('จะล้างข้อมูลทั้งหมดในชีต "' + sheetName + '" ด้วย ยืนยันไหม?')) return;
+
+        const ld = document.getElementById('record-loading');
+        ld.innerText = "⏳ กำลังล้างข้อมูลในชีต...";
+        ld.style.display = 'block';
+
+        postJSON({ action: "saveJobSheet", sheetName: sheetName, rows: [] })
+        .then(res => {
+          ld.style.display = 'none';
+          if (!res.success) { alert(res.msg); return; }
+        })
+        .catch(e => { ld.style.display = 'none'; alert(e.message || ('เชื่อมต่อผิดพลาด: ' + e)); });
+      }
+
       recordRows = [];
       renderRecordTable();
       document.getElementById('record-batchno').value = '';
-      document.getElementById('record-photo').value = '';
     }
 
     // จัดรูปแบบทะเบียนรถอัตโนมัติ: รองรับทั้งแบบ ##-#### (6 หลัก) และ ###-#### (7 หลัก)
