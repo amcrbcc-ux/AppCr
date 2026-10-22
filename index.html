@@ -386,7 +386,6 @@
   <script>
     // 🔴 วาง URL เว็บแอปจาก Google Apps Script (ลงท้ายด้วย /exec) ตรงช่องนี้
     const BACKEND_URL = "https://script.google.com/macros/s/AKfycby1d_ZHPfvUaziG_uK4d1K1yqKc95_xBeXm2xAA9g1zydpjH9Ob_QtSd7wOFdkBFC2ttA/exec";
-
     // เรียก backend แบบปลอดภัยขึ้น: บางครั้ง Apps Script อาจส่งหน้า HTML error กลับมาแทน JSON
     // ชั่วคราว (เช่น execution timeout หรือมีคนใช้พร้อมกันเยอะเกิน concurrent limit)
     // ฟังก์ชันนี้จะลองใหม่ให้อัตโนมัติ 1 ครั้งก่อน ค่อยแจ้ง error ที่เข้าใจง่ายกว่าเดิม
